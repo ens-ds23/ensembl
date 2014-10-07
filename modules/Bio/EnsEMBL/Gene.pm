@@ -1000,8 +1000,13 @@ sub get_all_Transcripts {
     }
   }
   # copy of cache references needed to protect Gene cache
-  my @transcripts = @{$self->{'_transcript_array'}}; 
-  return \@transcripts;
+  my $transcript_array = $self->{'_transcript_array'};
+  my @transcripts = [];
+  if ($transcript_array) {
+    @transcripts = @$transcript_array;
+    return \@transcripts
+  }
+  return;
 }
 
 
