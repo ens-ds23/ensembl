@@ -61,13 +61,12 @@ use warnings;
 
 use Bio::EnsEMBL::DBSQL::BaseAdaptor;
 use Bio::EnsEMBL::Attribute;
-
+use Bio::EnsEMBL::DBSQL::Support::FullIdCache;
 use Bio::EnsEMBL::Utils::Exception qw(throw warning);
 use Bio::EnsEMBL::Utils::Scalar qw(assert_ref);
 
 use vars qw(@ISA);
-
-@ISA = qw(Bio::EnsEMBL::DBSQL::BaseAdaptor);
+use base qw/Bio::EnsEMBL::DBSQL::BaseAdaptor/;
 
 =head2 new
 
@@ -630,6 +629,13 @@ sub _obj_from_sth {
 
   return \@results;
 }
+
+sub _build_id_cache {
+  my ($self) = @_;
+  print "!! Building ID cache\n";
+  return Bio::EnsEMBL::DBSQL::Support::FullIdCache->new($self);
+}
+
 
 1;
 
