@@ -53,7 +53,7 @@ sub run {
 
   my $file = @{$files}[0];
 
-  my ( $sp_source_id, $sptr_source_id, $sp_release, $sptr_release, $sptr_non_display_source_id );
+  my ( $sp_source_id, $sptr_source_id, $sp_release, $sptr_release, $sptr_non_display_source_id, $sp_direct_source_id, $sptr_direct_source_id );
 
   $sp_source_id =
     $self->get_source_id_for_source_name('Uniprot/SWISSPROT','sequence_mapped');
@@ -63,14 +63,19 @@ sub run {
   $sptr_non_display_source_id =
     $self->get_source_id_for_source_name('Uniprot/SPTREMBL', 'protein_evidence_gt_2');
 
+  $sp_direct_source_id = $self->get_source_id_for_source_name('Uniprot/SWISSPROT', 'direct');
+  $sptr_direct_source_id = $self->get_source_id_for_source_name('Uniprot/SPTREMBL', 'direct');
+
   print "SwissProt source id for $file: $sp_source_id\n" if ($verbose);
   print "SpTREMBL source id for $file: $sptr_source_id\n" if ($verbose);
   print "SpTREMBL protein_evidence > 2 source id for $file: $sptr_non_display_source_id\n" if ($verbose);
+  print "SwissProt direct source id for $file: $sp_direct_source_id\n" if ($verbose);
+  print "SpTREMBL direct source id for $file: $sptr_direct_source_id\n" if ($verbose);
  
 
   my @xrefs =
     $self->create_xrefs( $sp_source_id, $sptr_source_id, $sptr_non_display_source_id, $species_id,
-      $file, $verbose );
+      $file, $verbose, $sp_direct_source_id, $sptr_direct_source_id );
 
   if ( !@xrefs ) {
       return 1;    # 1 error
@@ -107,6 +112,8 @@ sub run {
         $self->set_release( $sp_source_id,        $sp_release );
         $self->set_release( $sptr_source_id,      $sptr_release );
 	$self->set_release( $sptr_non_display_source_id, $sptr_release );
+        $self->set_release( $sp_direct_source_id, $sp_release );
+        $self->set_release( $sptr_direct_source_id,$sptr_release );
     }
 
 
@@ -118,13 +125,15 @@ sub run {
 # Parse file into array of xref objects
 
 sub create_xrefs {
-  my ($self, $sp_source_id, $sptr_source_id, $sptr_non_display_source_id, $species_id, $file, $verbose ) = @_;
+  my ($self, $sp_source_id, $sptr_source_id, $sptr_non_display_source_id, $species_id, $file, $verbose, $sp_direct_source_id, $sptr_direct_source_id ) = @_;
 
   my $num_sp = 0;
   my $num_sptr = 0;
   my $num_sp_pred = 0;
   my $num_sptr_pred = 0;
   my $num_sptr_non_display = 0;
+  my $num_direct_sp = 0;
+  my $num_direct_sptr = 0;
 
   my %dependent_sources = $self->get_xref_sources();
 
@@ -382,8 +391,8 @@ sub create_xrefs {
     if(! $ensembl_derived_protein) {
       my %depe;
       foreach my $gn (@gn_lines){
-# Make sure these are still GN lines
-        if ($gn !~ /^GN/) { next; }
+# Make sure these are still lines with Name or Synonyms
+        if (($gn !~ /^GN/ || $gn !~ /Name=/) && $gn !~ /Synonyms=/) { last; }
         my $gene_name = undef;
 
         if ($gn =~ / Name=([A-Za-z0-9_\-\.]+)/s) { #/s for multi-line entries ; is the delimiter
@@ -464,6 +473,24 @@ sub create_xrefs {
 # Uniprot get Reactome links from Reactome, so we want to get the info from Reactome directly
         if($source =~ "Reactome"){
             next;
+        }
+# If mapped to Ensembl, add as direct xref
+        if ($source eq "Ensembl") {
+# Example line:
+# DR   Ensembl; ENST00000380152; ENSP00000369497; ENSG00000139618.
+# $source is Ensembl, $acc is ENST00000380152 and @extra is the rest of the line
+          my %direct;
+          $direct{STABLE_ID} = $extra[0];
+          $direct{ENSEMBL_TYPE} = 'Translation';
+          $direct{LINKAGE_TYPE} = 'DIRECT';
+          if ($xref->{SOURCE_ID} == $sp_source_id) {
+            $direct{SOURCE_ID} = $sp_direct_source_id;
+            $num_direct_sp++;
+          } else {
+            $direct{SOURCE_ID} = $sptr_direct_source_id;
+            $num_direct_sptr++;
+          }
+          push @{$xref->{DIRECT_XREFS}}, \%direct;
         }
 	   if (exists $dependent_sources{$source} ) {
 	  # create dependent xref structure & store it
@@ -568,6 +595,7 @@ sub create_xrefs {
   $uniprot_io->close();
 
   print "Read $num_sp SwissProt xrefs, $num_sptr SPTrEMBL xrefs with protein evidence codes 1-2, and $num_sptr_non_display SPTrEMBL xrefs with protein evidence codes > 2 from $file\n" if($verbose);
+  print "Added $num_direct_sp direct SwissProt xrefs and $num_direct_sptr direct SPTrEMBL xrefs\n" if ($verbose);
   print "Found $num_sp_pred predicted SwissProt xrefs and $num_sptr_pred predicted SPTrEMBL xrefs\n" if (($num_sp_pred > 0 || $num_sptr_pred > 0) and $verbose);
   print "Skipped $ensembl_derived_protein_count ensembl annotations as Gene names\n";
 
